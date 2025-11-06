@@ -1,12 +1,11 @@
 import axios from 'axios';
 
 const axiosInstance = axios.create({
-  baseURL: '/api',
-  headers: {
-    'Content-Type': 'application/json',
-  },
-  timeout: 10000, // 10 seconds timeout
+  baseURL: 'https://cargonepal.onrender.com/api',
+  headers: { 'Content-Type': 'application/json' },
+    timeout: 10000, 
 });
+
 
 // Add token to requests
 axiosInstance.interceptors.request.use(
