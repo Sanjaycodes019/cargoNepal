@@ -67,7 +67,7 @@ const server = http.createServer(app);
 // Initialize Socket.IO
 const io = new Server(server, {
   cors: {
-    origin: 'http://localhost:5173',
+    origin: 'https://cargonepalfrontend.vercel.app',
     methods: ['GET', 'POST']
   }
 });
