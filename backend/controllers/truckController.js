@@ -6,7 +6,9 @@ const getTrucks = async (req, res) => {
     const { type, capacity, available } = req.query;
     const filter = {};
 
-    if (type) filter.type = type;
+    // Case-insensitive search for type using regex
+    if (type) filter.type = { $regex: new RegExp(type, 'i') };
+    
     if (capacity) filter.capacityTons = { $gte: Number(capacity) };
     if (available !== undefined) filter.available = available === 'true';
 
@@ -37,4 +39,3 @@ const getTruckById = async (req, res) => {
 };
 
 module.exports = { getTrucks, getTruckById };
-
