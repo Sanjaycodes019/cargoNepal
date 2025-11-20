@@ -22,9 +22,7 @@ router.post('/trucks', addTruck);
 router.put('/trucks/:id', updateTruck);
 router.put('/trucks/:id/toggle', toggleTruckAvailability);
 router.delete('/trucks/:id', deleteTruck);
-
 router.get('/bookings', getMyBookings);
-
 router.get('/bookings/:id', async (req, res) => {
   try {
     const Booking = require('../models/BookingModel');
@@ -46,8 +44,8 @@ router.get('/bookings/:id', async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 });
-
 router.put('/bookings/:id/status', updateBookingStatus);
 router.put('/profile', updateProfile);
 
 module.exports = router;
+
