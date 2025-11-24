@@ -7,12 +7,28 @@ const { geocodeLocation } = require('../utils/geocoding');
 // Create booking (customer)
 const createBooking = async (req, res) => {
   try {
-    const { truckId, pickup, dropoff, notes } = req.body;
+    const { truckId, pickup, dropoff, notes, capacityTons } = req.body;
 
     if (!truckId || !pickup || !dropoff) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide truckId, pickup, and dropoff locations'
+        message: 'Please provide truckId, pickup, and dropoff locations',
+      });
+    }
+
+    // Validate capacityTons presence and correctness
+    if (capacityTons === undefined || capacityTons === null) {
+      return res.status(400).json({
+        success: false,
+        message: 'capacityTons is required',
+      });
+    }
+
+    const capacityNum = Number(capacityTons);
+    if (isNaN(capacityNum) || capacityNum <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid capacityTons value',
       });
     }
 
@@ -24,7 +40,7 @@ const createBooking = async (req, res) => {
       if (!pickup.address) {
         return res.status(400).json({
           success: false,
-          message: 'Please provide pickup location address'
+          message: 'Please provide pickup location address',
         });
       }
       try {
@@ -32,7 +48,7 @@ const createBooking = async (req, res) => {
       } catch (error) {
         return res.status(400).json({
           success: false,
-          message: `Could not find pickup location: ${error.message}`
+          message: `Could not find pickup location: ${error.message}`,
         });
       }
     }
@@ -41,7 +57,7 @@ const createBooking = async (req, res) => {
       if (!dropoff.address) {
         return res.status(400).json({
           success: false,
-          message: 'Please provide dropoff location address'
+          message: 'Please provide dropoff location address',
         });
       }
       try {
@@ -49,24 +65,25 @@ const createBooking = async (req, res) => {
       } catch (error) {
         return res.status(400).json({
           success: false,
-          message: `Could not find dropoff location: ${error.message}`
+          message: `Could not find dropoff location: ${error.message}`,
         });
       }
     }
 
-    // Update pickup and dropoff with coordinates
+    // Finalize pickup and dropoff info with coords
     const finalPickup = {
       address: pickup.address || `${pickupCoords.lat}, ${pickupCoords.lng}`,
       lat: pickupCoords.lat,
-      lng: pickupCoords.lng
+      lng: pickupCoords.lng,
     };
 
     const finalDropoff = {
       address: dropoff.address || `${dropoffCoords.lat}, ${dropoffCoords.lng}`,
       lat: dropoffCoords.lat,
-      lng: dropoffCoords.lng
+      lng: dropoffCoords.lng,
     };
 
+    // Fetch truck
     const truck = await Truck.findById(truckId);
     if (!truck) {
       return res.status(404).json({ success: false, message: 'Truck not found' });
@@ -87,17 +104,18 @@ const createBooking = async (req, res) => {
     // Calculate price
     const price = calculatePrice(distanceKm, truck.ratePerKm || process.env.DEFAULT_RATE_PER_KM || 25);
 
-    // Create booking
+    // Create booking with capacityTons included
     const booking = await Booking.create({
       truck: truckId,
       owner: truck.owner,
       customer: req.user.id,
       pickup: finalPickup,
       dropoff: finalDropoff,
-      distanceKm: Math.round(distanceKm * 100) / 100, // Round to 2 decimal places
+      distanceKm: Math.round(distanceKm * 100) / 100,
       price,
       status: 'pending',
-      notes
+      notes,
+      capacityTons: capacityNum,  // <-- Include capacityTons here
     });
 
     const populatedBooking = await Booking.findById(booking._id)
@@ -110,21 +128,21 @@ const createBooking = async (req, res) => {
       userRole: 'owner',
       message: `New booking request for ${populatedBooking.truck.title}`,
       type: 'booking',
-      relatedId: booking._id
+      relatedId: booking._id,
     });
 
     // Emit real-time notification to owner
     const io = req.app.get('io');
     if (io) {
       io.to(`user-${truck.owner}`).emit('new_booking', {
-        booking: populatedBooking
+        booking: populatedBooking,
       });
     }
 
     res.status(201).json({
       success: true,
       data: populatedBooking,
-      message: 'Booking created successfully'
+      message: 'Booking created successfully',
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -132,4 +150,3 @@ const createBooking = async (req, res) => {
 };
 
 module.exports = { createBooking };
-
