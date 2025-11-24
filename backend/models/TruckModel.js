@@ -6,14 +6,16 @@ const TruckSchema = new mongoose.Schema({
   type: { type: String },
   capacityTons: { type: Number },
   ratePerKm: { type: Number, default: 25 },
+
   location: {
+    address: { type: String },  
     lat: { type: Number },
     lng: { type: Number }
   },
+
   available: { type: Boolean, default: true },
   description: { type: String },
   imageUrl: { type: String }
 }, { timestamps: true });
 
 module.exports = mongoose.model('Truck', TruckSchema);
-
