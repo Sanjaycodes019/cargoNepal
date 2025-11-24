@@ -64,7 +64,11 @@ const createTruck = async (req, res) => {
 
     const truck = await Truck.create({
       ...rest,
-      location: { lat, lng }
+      location: {
+        address: locationString,   // 👈 store address
+        lat,
+        lng
+      }
     });
 
     res.status(201).json({ success: true, data: truck });
@@ -89,6 +93,7 @@ const updateTruck = async (req, res) => {
 
       if (geo.data.results.length > 0) {
         updateData.location = {
+          address: locationString,  // 👈 store updated address
           lat: geo.data.results[0].geometry.lat,
           lng: geo.data.results[0].geometry.lng
         };
@@ -96,7 +101,6 @@ const updateTruck = async (req, res) => {
     }
 
     const truck = await Truck.findByIdAndUpdate(req.params.id, updateData, { new: true });
-
     res.json({ success: true, data: truck });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
