@@ -1,9 +1,7 @@
 const axios = require('axios');
 const Truck = require('../models/TruckModel');
 
-// ===============================
-// GET ALL TRUCKS (PUBLIC)
-// ===============================
+// ============ GET ALL TRUCKS ============
 const getTrucks = async (req, res) => {
   try {
     const { type, capacity, available } = req.query;
@@ -23,17 +21,13 @@ const getTrucks = async (req, res) => {
   }
 };
 
-// ===============================
-// GET SINGLE TRUCK
-// ===============================
+// ============ GET TRUCK BY ID ============
 const getTruckById = async (req, res) => {
   try {
     const truck = await Truck.findById(req.params.id)
       .populate('owner', 'name email phone address');
 
-    if (!truck) {
-      return res.status(404).json({ success: false, message: 'Truck not found' });
-    }
+    if (!truck) return res.status(404).json({ success: false, message: 'Truck not found' });
 
     res.json({ success: true, data: truck });
   } catch (error) {
@@ -41,21 +35,16 @@ const getTruckById = async (req, res) => {
   }
 };
 
-// ===============================
-// CREATE TRUCK (AUTO GEOCODING)
-// ===============================
+// ============ CREATE TRUCK ============
 const createTruck = async (req, res) => {
   try {
     const { locationString, ...rest } = req.body;
 
-    let lat = null;
-    let lng = null;
-
+    let lat, lng;
     if (locationString) {
       const geo = await axios.get(
         `https://api.opencagedata.com/geocode/v1/json?q=${encodeURIComponent(locationString)}&key=e4019cff3b1f4ce38bb45a69ce38b990`
       );
-
       if (geo.data.results.length > 0) {
         lat = geo.data.results[0].geometry.lat;
         lng = geo.data.results[0].geometry.lng;
@@ -64,11 +53,7 @@ const createTruck = async (req, res) => {
 
     const truck = await Truck.create({
       ...rest,
-      location: {
-        address: locationString,
-        lat,
-        lng
-      }
+      location: { address: locationString, lat, lng }
     });
 
     res.status(201).json({ success: true, data: truck });
@@ -77,66 +62,56 @@ const createTruck = async (req, res) => {
   }
 };
 
-// 🆕 ===============================
-// FIND NEAREST TRUCKS
-// ===============================
-// ===============================
-// FIND NEAREST TRUCKS + ESTIMATED PRICE
-
+// ============ NEAREST TRUCKS (Distance + Price + Capacity Filter) ============
 const nearestTrucks = async (req, res) => {
   try {
-    const { pickupLat, pickupLng } = req.body;
-    if (!pickupLat || !pickupLng) {
-      return res.status(400).json({ message: "Pickup location required" });
-    }
+    const { pickupLat, pickupLng, requiredCapacity } = req.body;
+    if (!pickupLat || !pickupLng) return res.status(400).json({ message: "Pickup location required" });
 
-    const trucks = await Truck.find(); // from DB
+    const trucks = await Truck.find();
 
     const calcDistance = (lat1, lng1, lat2, lng2) => {
-      const R = 6371; // km
+      const R = 6371;
       const dLat = (lat2 - lat1) * Math.PI / 180;
       const dLng = (lng2 - lng1) * Math.PI / 180;
       const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.sin(dLat / 2) ** 2 +
         Math.cos(lat1 * Math.PI / 180) *
         Math.cos(lat2 * Math.PI / 180) *
-        Math.sin(dLng / 2) * Math.sin(dLng / 2);
+        Math.sin(dLng / 2) ** 2;
       return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
     };
 
-    const pricedTrucks = trucks.map((truck) => {
-      if (!truck.location?.lat || !truck.location?.lng) return null;
+    let filtered = trucks
+      .map(t => {
+        if (!t.location?.lat || !t.location?.lng) return null;
 
-      const distance = calcDistance(
-        pickupLat,
-        pickupLng,
-        truck.location.lat,
-        truck.location.lng
-      );
+        const distance = calcDistance(pickupLat, pickupLng, t.location.lat, t.location.lng);
+        const estimatedPrice = Math.round(distance * 60 + 500);
 
-      let estimatedPrice = 500 + distance * 60; // 👈 price logic
-      estimatedPrice = Math.round(estimatedPrice);
+        return {
+          ...t.toObject(),
+          distance,
+          estimatedPrice
+        };
+      })
+      .filter(Boolean);
 
-      return {
-        ...truck.toObject(),
-        distance: Number(distance.toFixed(2)),
-        estimatedPrice,
-      };
-    }).filter(Boolean);
+    // Filter by required cargo capacity
+    if (requiredCapacity) {
+      filtered = filtered.filter(t => t.capacityTons >= Number(requiredCapacity));
+    }
 
-    pricedTrucks.sort((a, b) => a.distance - b.distance);
+    filtered.sort((a, b) => a.distance - b.distance);
 
-    res.json(pricedTrucks);
+    res.json({ success: true, data: filtered });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Something went wrong" });
   }
 };
 
-
-// ===============================
-// UPDATE TRUCK (AUTO LOCATION UPDATE)
-// ===============================
+// ============ UPDATE TRUCK ============
 const updateTruck = async (req, res) => {
   try {
     const { locationString, ...rest } = req.body;
@@ -146,7 +121,6 @@ const updateTruck = async (req, res) => {
       const geo = await axios.get(
         `https://api.opencagedata.com/geocode/v1/json?q=${encodeURIComponent(locationString)}&key=e4019cff3b1f4ce38bb45a69ce38b990`
       );
-
       if (geo.data.results.length > 0) {
         updateData.location = {
           address: locationString,
@@ -163,9 +137,7 @@ const updateTruck = async (req, res) => {
   }
 };
 
-// ===============================
-// EXPORT
-// ===============================
+// EXPORTS
 module.exports = {
   getTrucks,
   getTruckById,
