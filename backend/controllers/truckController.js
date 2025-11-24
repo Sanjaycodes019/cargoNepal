@@ -78,13 +78,18 @@ const createTruck = async (req, res) => {
 };
 
 // ===============================
-// NEAREST TRUCKS (BEST MATCH)
+// NEAREST TRUCKS (OPTIMIZED CAPACITY MATCHING)
 // ===============================
 const nearestTrucks = async (req, res) => {
   try {
     const { pickupLat, pickupLng, requiredCapacity } = req.body;
+    
     if (!pickupLat || !pickupLng) {
       return res.status(400).json({ message: "Pickup location required" });
+    }
+
+    if (!requiredCapacity) {
+      return res.status(400).json({ message: "Required capacity must be specified" });
     }
 
     const trucks = await Truck.find();
@@ -102,39 +107,44 @@ const nearestTrucks = async (req, res) => {
       return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
     };
 
+    // Filter trucks: capacity >= required AND has valid location
     let filtered = trucks
+      .filter(t => {
+        return t.location?.lat && 
+               t.location?.lng && 
+               t.capacityTons >= Number(requiredCapacity);
+      })
       .map(t => {
-        if (!t.location?.lat || !t.location?.lng) return null;
-
         const distance = calcDistance(pickupLat, pickupLng, t.location.lat, t.location.lng);
-        const estimatedPrice = Math.round(distance * 60 + 500); // price logic
+        const estimatedPrice = Math.round(distance * 60 + 500);
+        
+        // Calculate how much "excess" capacity this truck has
+        const capacityDifference = t.capacityTons - Number(requiredCapacity);
 
         return {
           ...t.toObject(),
           distance,
-          estimatedPrice
+          estimatedPrice,
+          capacityDifference
         };
-      })
-      .filter(Boolean);
+      });
 
     // ===============================
-    // Best-match sorting: distance + capacity
+    // PRIORITY SORTING:
+    // 1. Nearest capacity to required (smallest excess)
+    // 2. Then by distance (closest first)
     // ===============================
-    if (requiredCapacity) {
-      const distanceWeight = 1;    // tune this weight
-      const capacityWeight = 0.5;  // tune this weight
-
-      filtered = filtered
-        .filter(t => t.capacityTons >= Number(requiredCapacity))
-        .map(t => ({
-          ...t,
-          matchScore: t.distance * distanceWeight + (t.capacityTons - Number(requiredCapacity)) * capacityWeight
-        }))
-        .sort((a, b) => a.matchScore - b.matchScore); // smaller score = better match
-    } else {
-      // If capacity not specified, just sort by distance
-      filtered.sort((a, b) => a.distance - b.distance);
-    }
+    
+    // Adjust these weights to fine-tune priority
+    const capacityWeight = 10;  // Higher = prioritize closer capacity match
+    const distanceWeight = 1;   // Distance importance
+    
+    filtered = filtered
+      .map(t => ({
+        ...t,
+        matchScore: (t.capacityDifference * capacityWeight) + (t.distance * distanceWeight)
+      }))
+      .sort((a, b) => a.matchScore - b.matchScore); // Lower score = better match
 
     res.json({ success: true, data: filtered });
   } catch (err) {
@@ -142,7 +152,6 @@ const nearestTrucks = async (req, res) => {
     res.status(500).json({ message: "Something went wrong" });
   }
 };
-
 // ===============================
 // UPDATE TRUCK (AUTO LOCATION UPDATE)
 // ===============================
