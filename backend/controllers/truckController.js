@@ -65,7 +65,7 @@ const createTruck = async (req, res) => {
     const truck = await Truck.create({
       ...rest,
       location: {
-        address: locationString,   // 👈 store address
+        address: locationString,
         lat,
         lng
       }
@@ -77,13 +77,69 @@ const createTruck = async (req, res) => {
   }
 };
 
+// 🆕 ===============================
+// FIND NEAREST TRUCKS
 // ===============================
-// UPDATE TRUCK (AUTO UPDATE LOCATION)
+// ===============================
+// FIND NEAREST TRUCKS + ESTIMATED PRICE
+
+const nearestTrucks = async (req, res) => {
+  try {
+    const { pickupLat, pickupLng } = req.body;
+    if (!pickupLat || !pickupLng) {
+      return res.status(400).json({ message: "Pickup location required" });
+    }
+
+    const trucks = await Truck.find(); // from DB
+
+    const calcDistance = (lat1, lng1, lat2, lng2) => {
+      const R = 6371; // km
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLng = (lng2 - lng1) * Math.PI / 180;
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) *
+        Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLng / 2) * Math.sin(dLng / 2);
+      return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+    };
+
+    const pricedTrucks = trucks.map((truck) => {
+      if (!truck.location?.lat || !truck.location?.lng) return null;
+
+      const distance = calcDistance(
+        pickupLat,
+        pickupLng,
+        truck.location.lat,
+        truck.location.lng
+      );
+
+      let estimatedPrice = 500 + distance * 60; // 👈 price logic
+      estimatedPrice = Math.round(estimatedPrice);
+
+      return {
+        ...truck.toObject(),
+        distance: Number(distance.toFixed(2)),
+        estimatedPrice,
+      };
+    }).filter(Boolean);
+
+    pricedTrucks.sort((a, b) => a.distance - b.distance);
+
+    res.json(pricedTrucks);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Something went wrong" });
+  }
+};
+
+
+// ===============================
+// UPDATE TRUCK (AUTO LOCATION UPDATE)
 // ===============================
 const updateTruck = async (req, res) => {
   try {
     const { locationString, ...rest } = req.body;
-
     let updateData = { ...rest };
 
     if (locationString) {
@@ -93,7 +149,7 @@ const updateTruck = async (req, res) => {
 
       if (geo.data.results.length > 0) {
         updateData.location = {
-          address: locationString,  // 👈 store updated address
+          address: locationString,
           lat: geo.data.results[0].geometry.lat,
           lng: geo.data.results[0].geometry.lng
         };
@@ -114,5 +170,6 @@ module.exports = {
   getTrucks,
   getTruckById,
   createTruck,
-  updateTruck
+  updateTruck,
+  nearestTrucks
 };
