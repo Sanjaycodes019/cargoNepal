@@ -213,10 +213,9 @@ const generateInvoice = async (req, res) => {
     
     // Company name in circular stamp
     doc.font("Helvetica-Bold").fontSize(11).fillColor("#1a365d");
-    doc.text("CARGONEPAL", stampX + 10, stampY + 28, { width: stampSize - 20, align: "center" });
+    doc.text("CARGO", stampX + 10, stampY + 28, { width: stampSize - 20, align: "center" });
     doc.font("Helvetica").fontSize(7).fillColor("#1a365d");
-    doc.text("CARGO SERVICES", stampX + 10, stampY + 42, { width: stampSize - 20, align: "center" });
-    doc.fontSize(6).text("Bhairahawa, NEPAL", stampX + 10, stampY + 52, { width: stampSize - 20, align: "center" });
+    doc.fontSize(6).text("NEPAL", stampX + 10, stampY + 52, { width: stampSize - 20, align: "center" });
 
     // Authorized Signature (Right side)
     const sigX = 400;
