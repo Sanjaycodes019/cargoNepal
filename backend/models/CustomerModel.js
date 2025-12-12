@@ -6,8 +6,21 @@ const CustomerSchema = new mongoose.Schema({
   passwordHash: { type: String, required: true },
   phone: { type: String },
   address: { type: String },
-  role: { type: String, default: 'customer' }
+  role: { type: String, default: 'customer' },
+
+  // OTP / verification fields
+  isVerified: { type: Boolean, default: false },
+  otp: { type: String, select: false },        // hashed OTP, don't return by default
+  otpExpires: { type: Date, select: false }    // expiry timestamp
 }, { timestamps: true });
 
-module.exports = mongoose.model('Customer', CustomerSchema);
+// Optional: helper method to hide sensitive fields when converting to JSON
+CustomerSchema.methods.toJSON = function() {
+  const obj = this.toObject();
+  delete obj.passwordHash;
+  delete obj.otp;
+  delete obj.otpExpires;
+  return obj;
+};
 
+module.exports = mongoose.model('Customer', CustomerSchema);
