@@ -5,22 +5,20 @@ const path = require('path');
 const http = require('http');
 const { Server } = require('socket.io');
 
-// Load env vars
-const result = dotenv.config({ path: path.resolve(__dirname, '.env') });
-
-if (result.error) {
-  console.error('Error loading .env file:', result.error);
-  console.error('\n⚠️  Please create a .env file in the backend directory with:');
-  console.error('PORT=3000');
-  console.error('MONGO_URI=mongodb://localhost:27017/cargoNepal');
-  console.error('JWT_SECRET=verysecretkeychangethisinproduction');
-  console.error('DEFAULT_RATE_PER_KM=25\n');
+// Load env vars - Don't crash if .env is missing (Render uses dashboard env vars)
+try {
+  const result = dotenv.config({ path: path.resolve(__dirname, '.env') });
+  if (result.error && process.env.NODE_ENV !== 'production') {
+    console.warn('No .env file found - using environment variables from system');
+  }
+} catch (error) {
+  console.log('ℹ️  Running in production mode - using platform environment variables');
 }
 
 // Verify required environment variables
 if (!process.env.MONGO_URI) {
-  console.error('\n❌ MONGO_URI is not defined in .env file!');
-  console.error('Please create a .env file with the required variables.\n');
+  console.error('\nMONGO_URI is not defined!');
+  console.error('Please set environment variables in Render dashboard or create .env file locally.\n');
   process.exit(1);
 }
 
@@ -31,11 +29,30 @@ connectDB();
 
 const app = express();
 
-// Middleware
+// CORS Configuration - Allow both production frontend and localhost
+const allowedOrigins = [
+  'https://cargonepalfrontend.vercel.app',
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://localhost:5174'
+];
+
 app.use(cors({
-  origin: 'https://cargonepalfrontend.vercel.app',
-  credentials: true
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps, Postman, curl)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -54,9 +71,31 @@ app.use('/api/utils', require('./routes/utilsRoutes'));
 // Error handling middleware
 app.use(require('./middleware/errorHandler'));
 
-// Test route
+// Health check / Test route
 app.get('/', (req, res) => {
-  res.json({ message: 'CargoNepal API is running' });
+  res.json({ 
+    message: 'CargoNepal API is running',
+    status: 'online',
+    version: '1.0.0',
+    timestamp: new Date().toISOString(),
+    endpoints: {
+      auth: '/api/auth',
+      trucks: '/api/trucks',
+      bookings: '/api/bookings',
+      reviews: '/api/reviews',
+      payments: '/api/payments',
+      notifications: '/api/notifications'
+    }
+  });
+});
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: 'Route not found',
+    path: req.originalUrl
+  });
 });
 
 const PORT = process.env.PORT || 3000;
@@ -64,33 +103,58 @@ const PORT = process.env.PORT || 3000;
 // Create HTTP server for Socket.IO
 const server = http.createServer(app);
 
-// Initialize Socket.IO
+// Initialize Socket.IO with CORS
 const io = new Server(server, {
   cors: {
-    origin: 'https://cargonepalfrontend.vercel.app',
-    methods: ['GET', 'POST']
+    origin: allowedOrigins,
+    methods: ['GET', 'POST'],
+    credentials: true
   }
 });
 
 // Socket.IO connection handling
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
-
+  
   // Join user room based on their ID
   socket.on('join-room', (userId) => {
     socket.join(`user-${userId}`);
-    console.log(`User ${userId} joined room`);
+    console.log(`👤 User ${userId} joined room`);
   });
-
+  
+  // Handle new notification
+  socket.on('new-notification', (data) => {
+    io.to(`user-${data.userId}`).emit('notification', data);
+  });
+  
+  // Handle booking updates
+  socket.on('booking-update', (data) => {
+    io.to(`user-${data.userId}`).emit('booking-status-change', data);
+  });
+  
   socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
+    console.log('❌ Client disconnected:', socket.id);
+  });
+  
+  socket.on('error', (error) => {
+    console.error('Socket error:', error);
   });
 });
 
 // Make io accessible to routes
 app.set('io', io);
 
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM signal received: closing HTTP server');
+  server.close(() => {
+    console.log('HTTP server closed');
+  });
 });
 
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`Frontend: https://cargonepalfrontend.vercel.app`);
+  console.log(`API: https://cargonepal.onrender.com`);
+});
